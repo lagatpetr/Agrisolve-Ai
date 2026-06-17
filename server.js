@@ -1,15 +1,6 @@
-/*
- * AGRISOLVE Backend - server.js
- * Express + WebSocket server
- * Real-time sensor updates via WebSocket
- * AI plant analysis via Anthropic Claude vision
- */
-
 require('dotenv').config();
 const express   = require('express');
 const http      = require('http');
-const httpLib   = require('http');
-const https     = require('https');
 const { WebSocketServer, WebSocket } = require('ws');
 const cors      = require('cors');
 const path      = require('path');
@@ -22,57 +13,83 @@ const PORT   = process.env.PORT || 3000;
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── STATE ────────────────────────────────────────────────────────────────────
 let latestSensor   = { temperature: null, soil_moisture: null, soil_status: null, timestamp: null };
 let latestAnalysis = null;
 let sensorHistory  = [];
-let cameraIP       = null;
 
-// Device online tracking
 const deviceStatus = {
   main_esp:   { online: false, lastSeen: null },
   camera_esp: { online: false, lastSeen: null },
 };
 
-// Connected WebSocket clients (browser dashboards)
 const dashboardClients = new Set();
 
-// ─── WEBSOCKET ────────────────────────────────────────────────────────────────
+let cameraWS       = null;
+let cameraIP       = null;
+
+let pendingCapture = null;
+
 wss.on('connection', (ws, req) => {
   console.log('[WS] New connection from', req.socket.remoteAddress);
-  let deviceType = 'dashboard'; // default until identified
+  let deviceType = 'dashboard';
 
   ws.on('message', (raw) => {
     try {
       const msg = JSON.parse(raw.toString());
 
-      // ── Device identification ────────────────────────────────────────────
       if (msg.type === 'identify') {
-        deviceType = msg.device; // 'main_esp' or 'camera_esp'
-        deviceStatus[deviceType].online  = true;
+        if (msg.device !== 'main_esp' && msg.device !== 'camera_esp') {
+          console.warn('[WS] Unknown identify device:', msg.device);
+          return;
+        }
+        deviceType = msg.device;
+        deviceStatus[deviceType].online   = true;
         deviceStatus[deviceType].lastSeen = new Date().toISOString();
 
         if (msg.device === 'camera_esp') {
-          // Save camera IP from connection for later use
-          cameraIP = req.socket.remoteAddress.replace('::ffff:', '');
+          cameraWS = ws;
+          cameraIP = msg.ip || 'unknown';
+          console.log(`[WS] Camera ESP registered (local IP: ${cameraIP})`);
         }
 
         console.log(`[WS] Device identified: ${deviceType}`);
         broadcastStatus();
+        ws.send(JSON.stringify({ type: 'ack', message: 'Registered' }));
         return;
       }
 
-      // ── Sensor data from main ESP ─────────────────────────────────────────
+      if (msg.type === 'image_data' && msg.data) {
+        console.log(`[WS] Image received from camera (${msg.data.length} chars)`);
+
+        broadcastToDashboards({ type: 'captured_image', imageBase64: msg.data });
+
+        if (pendingCapture) {
+          pendingCapture.resolve(msg.data);
+          pendingCapture = null;
+        }
+        return;
+      }
+
+      if (msg.type === 'capture_error') {
+        console.error('[WS] Camera error:', msg.message);
+        broadcastToDashboards({ type: 'analysis_error', error: 'Camera: ' + msg.message });
+        if (pendingCapture) {
+          pendingCapture.reject(new Error(msg.message));
+          pendingCapture = null;
+        }
+        return;
+      }
+
       if (msg.type === 'sensor_data' && msg.device === 'main_esp') {
         latestSensor = {
           temperature:   msg.temperature,
           soil_moisture: msg.soil_moisture,
           soil_status:   msg.soil_status,
+          water_detected: msg.water_detected,
           timestamp:     new Date().toISOString(),
         };
         deviceStatus.main_esp.online   = true;
@@ -81,7 +98,6 @@ wss.on('connection', (ws, req) => {
         sensorHistory.unshift(latestSensor);
         if (sensorHistory.length > 50) sensorHistory.pop();
 
-        // Push to all dashboard browsers instantly
         broadcastToDashboards({
           type:   'sensor_update',
           sensor: latestSensor,
@@ -89,17 +105,15 @@ wss.on('connection', (ws, req) => {
         });
       }
 
-      // ── Dashboard client identifies itself ────────────────────────────────
       if (msg.type === 'dashboard_hello') {
         deviceType = 'dashboard';
         dashboardClients.add(ws);
-        // Send current state immediately on connect
         ws.send(JSON.stringify({
-          type:     'init',
-          sensor:   latestSensor,
-          analysis: latestAnalysis,
-          history:  sensorHistory,
-          status:   deviceStatus,
+          type:      'init',
+          sensor:    latestSensor,
+          analysis:  latestAnalysis,
+          history:   sensorHistory,
+          status:    deviceStatus,
           camera_ip: cameraIP,
         }));
       }
@@ -111,19 +125,22 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     dashboardClients.delete(ws);
-    if (deviceType !== 'dashboard') {
-      deviceStatus[deviceType].online = false;
-      console.log(`[WS] Device disconnected: ${deviceType}`);
+    if (deviceType === 'camera_esp') {
+      cameraWS = null;
+      deviceStatus.camera_esp.online = false;
+      console.log('[WS] Camera ESP disconnected');
+      broadcastStatus();
+    } else if (deviceType === 'main_esp') {
+      deviceStatus.main_esp.online = false;
+      console.log('[WS] Main ESP disconnected');
       broadcastStatus();
     }
   });
 
-  // Heartbeat to detect dead connections
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
 });
 
-// Ping all clients every 30s to detect disconnects
 setInterval(() => {
   wss.clients.forEach((ws) => {
     if (!ws.isAlive) { ws.terminate(); return; }
@@ -143,33 +160,43 @@ function broadcastStatus() {
   broadcastToDashboards({ type: 'status_update', status: deviceStatus });
 }
 
-// ─── REST: /api/latest ────────────────────────────────────────────────────────
 app.get('/api/latest', (req, res) => {
-  res.json({ sensor: latestSensor, analysis: latestAnalysis, status: deviceStatus, camera_ip: cameraIP });
+  res.json({
+    sensor:    latestSensor,
+    analysis:  latestAnalysis,
+    status:    deviceStatus,
+    camera_ip: cameraIP,
+  });
 });
 
-// ─── REST: /api/history ───────────────────────────────────────────────────────
 app.get('/api/history', (req, res) => {
   res.json({ history: sensorHistory });
 });
 
-// ─── REST: /api/analyse ───────────────────────────────────────────────────────
-// Dashboard POSTs { camera_ip } → backend fetches photo → Claude analyses
 app.post('/api/analyse', async (req, res) => {
-  const camIP = req.body.camera_ip || cameraIP;
-  if (!camIP) return res.status(400).json({ error: 'Camera IP not known yet. Make sure Camera ESP is connected.' });
-
-  console.log(`[Analyse] Fetching image from http://${camIP}/capture`);
-
-  let imageBase64;
-  try {
-    imageBase64 = await fetchImageAsBase64(`http://${camIP}/capture`);
-  } catch (err) {
-    return res.status(502).json({ error: `Cannot reach camera at ${camIP}: ${err.message}` });
+  if (!cameraWS || cameraWS.readyState !== WebSocket.OPEN) {
+    return res.status(400).json({
+      error: 'Camera ESP32 not connected. Power it on and check Serial Monitor for [WS] Connected.'
+    });
   }
 
-  console.log('[Analyse] Image received, sending to Claude vision...');
+  console.log('[Analyse] Sending capture_now to camera via WebSocket...');
+
   try {
+    cameraWS.send(JSON.stringify({ type: 'capture_now' }));
+
+    const imageBase64 = await new Promise((resolve, reject) => {
+      pendingCapture = { resolve, reject };
+      setTimeout(() => {
+        if (pendingCapture) {
+          pendingCapture = null;
+          reject(new Error('Camera timed out — no image received in 20s'));
+        }
+      }, 20000);
+    });
+
+    console.log('[Analyse] Image received — sending to Claude vision...');
+
     const response = await anthropic.messages.create({
       model: 'claude-opus-4-6',
       max_tokens: 1024,
@@ -187,7 +214,7 @@ Respond ONLY with a valid JSON object, no markdown, no extra text:
 {
   "health_status": "Healthy | Diseased | Stressed | Unknown",
   "disease_name": "specific disease name or None if healthy",
-  "cause": "what is causing this condition (pathogen, pest, environmental, nutrient deficiency, etc.)",
+  "cause": "what is causing this condition",
   "recommendation": "immediate actionable advice for the farmer",
   "treatment": "specific treatment steps if diseased, or No treatment needed if healthy",
   "confidence": "High | Medium | Low"
@@ -203,71 +230,39 @@ Respond ONLY with a valid JSON object, no markdown, no extra text:
       analysis = JSON.parse(raw);
     } catch {
       const m = raw.match(/\{[\s\S]*\}/);
-      analysis = m ? JSON.parse(m[0]) : { health_status: 'Unknown', disease_name: 'Parse error', cause: raw, recommendation: '', treatment: '', confidence: 'Low' };
+      analysis = m ? JSON.parse(m[0]) : {
+        health_status: 'Unknown', disease_name: 'Parse error',
+        cause: raw, recommendation: '', treatment: '', confidence: 'Low'
+      };
     }
-    analysis.timestamp = new Date().toISOString();
-    latestAnalysis = analysis;
+    analysis.timestamp    = new Date().toISOString();
+    analysis.imageBase64  = imageBase64;
+    latestAnalysis        = analysis;
 
-    // Push analysis result to all dashboards instantly
     broadcastToDashboards({ type: 'analysis_result', analysis });
 
     console.log(`[Analyse] ${analysis.health_status} — ${analysis.disease_name}`);
     res.json({ ok: true, analysis });
 
   } catch (err) {
-    console.error('[Analyse] AI error:', err.message);
-    res.status(500).json({ error: 'AI analysis failed: ' + err.message });
+    console.error('[Analyse] Error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// ─── REST: /api/flash ─────────────────────────────────────────────────────────
-app.post('/api/flash', async (req, res) => {
-  const { state, camera_ip } = req.body;
-  const camIP = camera_ip || cameraIP;
-  if (!camIP) return res.status(400).json({ error: 'Camera IP unknown' });
-
-  const url = `http://${camIP}/flash/${state === 'on' ? 'on' : 'off'}`;
-  try {
-    await fetchUrl(url);
-    res.json({ ok: true, flash: state });
-  } catch (err) {
-    res.status(502).json({ error: `Flash command failed: ${err.message}` });
+app.post('/api/flash', (req, res) => {
+  const { state } = req.body;
+  if (!cameraWS || cameraWS.readyState !== WebSocket.OPEN) {
+    return res.status(400).json({ error: 'Camera ESP32 not connected' });
   }
+  cameraWS.send(JSON.stringify({ type: 'flash', state: state === 'on' ? 'on' : 'off' }));
+  res.json({ ok: true, flash: state });
 });
 
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
-function fetchImageAsBase64(url) {
-  return new Promise((resolve, reject) => {
-    const client = url.startsWith('https') ? https : httpLib;
-    const req = client.get(url, { timeout: 10000 }, (resp) => {
-      if (resp.statusCode !== 200) return reject(new Error(`Status ${resp.statusCode}`));
-      const chunks = [];
-      resp.on('data', c => chunks.push(c));
-      resp.on('end', () => resolve(Buffer.concat(chunks).toString('base64')));
-    });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('Timed out')); });
-  });
-}
-
-function fetchUrl(url) {
-  return new Promise((resolve, reject) => {
-    const client = url.startsWith('https') ? https : httpLib;
-    const req = client.get(url, { timeout: 5000 }, (resp) => {
-      resp.resume();
-      resp.on('end', resolve);
-    });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('Timed out')); });
-  });
-}
-
-// ─── CATCH ALL → serve index.html ─────────────────────────────────────────────
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
 server.listen(PORT, () => {
   console.log(`\n🌱 AGRISOLVE Backend running on port ${PORT}`);
   console.log(`   Dashboard: http://localhost:${PORT}\n`);
