@@ -19,12 +19,10 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL    = 'gemini-2.5-flash';
 const GEMINI_URL      = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
-// ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── STATE ────────────────────────────────────────────────────────────────────
 let latestSensor   = { temperature: null, soil_moisture: null, soil_status: null, timestamp: null };
 let latestAnalysis = null;
 let sensorHistory  = [];
@@ -38,8 +36,8 @@ const dashboardClients = new Set();
 
 let cameraWS       = null;
 let cameraIP       = null;
-
 let pendingCapture = null;
+let streaming      = false;   // ← NEW: track stream state
 
 // ─── WEBSOCKET ────────────────────────────────────────────────────────────────
 wss.on('connection', (ws, req) => {
@@ -50,6 +48,7 @@ wss.on('connection', (ws, req) => {
     try {
       const msg = JSON.parse(raw.toString());
 
+      // ── Device identify ──────────────────────────────────────────────────
       if (msg.type === 'identify') {
         if (msg.device !== 'main_esp' && msg.device !== 'camera_esp') {
           console.warn('[WS] Unknown identify device:', msg.device);
@@ -65,17 +64,15 @@ wss.on('connection', (ws, req) => {
           console.log(`[WS] Camera ESP registered (local IP: ${cameraIP})`);
         }
 
-        console.log(`[WS] Device identified: ${deviceType}`);
         broadcastStatus();
         ws.send(JSON.stringify({ type: 'ack', message: 'Registered' }));
         return;
       }
 
+      // ── Still image from camera ──────────────────────────────────────────
       if (msg.type === 'image_data' && msg.data) {
-        console.log(`[WS] Image received from camera (${msg.data.length} chars)`);
-
+        console.log(`[WS] Still image received (${msg.data.length} chars)`);
         broadcastToDashboards({ type: 'captured_image', imageBase64: msg.data });
-
         if (pendingCapture) {
           pendingCapture.resolve(msg.data);
           pendingCapture = null;
@@ -83,6 +80,15 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
+      // ── NEW: Live stream frame from camera ───────────────────────────────
+      if (msg.type === 'stream_frame' && msg.data) {
+        if (streaming) {
+          broadcastToDashboards({ type: 'stream_frame', imageBase64: msg.data });
+        }
+        return;
+      }
+
+      // ── Camera error ─────────────────────────────────────────────────────
       if (msg.type === 'capture_error') {
         console.error('[WS] Camera error:', msg.message);
         broadcastToDashboards({ type: 'analysis_error', error: 'Camera: ' + msg.message });
@@ -93,13 +99,14 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
+      // ── Sensor data ──────────────────────────────────────────────────────
       if (msg.type === 'sensor_data' && msg.device === 'main_esp') {
         latestSensor = {
-          temperature:   msg.temperature,
-          soil_moisture: msg.soil_moisture,
-          soil_status:   msg.soil_status,
+          temperature:    msg.temperature,
+          soil_moisture:  msg.soil_moisture,
+          soil_status:    msg.soil_status,
           water_detected: msg.water_detected,
-          timestamp:     new Date().toISOString(),
+          timestamp:      new Date().toISOString(),
         };
         deviceStatus.main_esp.online   = true;
         deviceStatus.main_esp.lastSeen = latestSensor.timestamp;
@@ -112,8 +119,10 @@ wss.on('connection', (ws, req) => {
           sensor: latestSensor,
           status: deviceStatus,
         });
+        return;
       }
 
+      // ── Dashboard hello ──────────────────────────────────────────────────
       if (msg.type === 'dashboard_hello') {
         deviceType = 'dashboard';
         dashboardClients.add(ws);
@@ -125,6 +134,26 @@ wss.on('connection', (ws, req) => {
           status:    deviceStatus,
           camera_ip: cameraIP,
         }));
+        return;
+      }
+
+      // ── NEW: Dashboard requests start/stop stream ────────────────────────
+      if (msg.type === 'start_stream') {
+        streaming = true;
+        console.log('[WS] Live stream started');
+        if (cameraWS && cameraWS.readyState === WebSocket.OPEN) {
+          cameraWS.send(JSON.stringify({ type: 'start_stream' }));
+        }
+        return;
+      }
+
+      if (msg.type === 'stop_stream') {
+        streaming = false;
+        console.log('[WS] Live stream stopped');
+        if (cameraWS && cameraWS.readyState === WebSocket.OPEN) {
+          cameraWS.send(JSON.stringify({ type: 'stop_stream' }));
+        }
+        return;
       }
 
     } catch (e) {
@@ -136,6 +165,7 @@ wss.on('connection', (ws, req) => {
     dashboardClients.delete(ws);
     if (deviceType === 'camera_esp') {
       cameraWS = null;
+      streaming = false;
       deviceStatus.camera_esp.online = false;
       console.log('[WS] Camera ESP disconnected');
       broadcastStatus();
@@ -171,12 +201,7 @@ function broadcastStatus() {
 
 // ─── REST: /api/latest ────────────────────────────────────────────────────────
 app.get('/api/latest', (req, res) => {
-  res.json({
-    sensor:    latestSensor,
-    analysis:  latestAnalysis,
-    status:    deviceStatus,
-    camera_ip: cameraIP,
-  });
+  res.json({ sensor: latestSensor, analysis: latestAnalysis, status: deviceStatus, camera_ip: cameraIP });
 });
 
 // ─── REST: /api/history ───────────────────────────────────────────────────────
@@ -187,18 +212,18 @@ app.get('/api/history', (req, res) => {
 // ─── REST: /api/analyse ───────────────────────────────────────────────────────
 app.post('/api/analyse', async (req, res) => {
   if (!cameraWS || cameraWS.readyState !== WebSocket.OPEN) {
-    return res.status(400).json({
-      error: 'Camera ESP32 not connected. Power it on and check Serial Monitor for [WS] Connected.'
-    });
+    return res.status(400).json({ error: 'Camera ESP32 not connected.' });
   }
-
   if (!GEMINI_API_KEY) {
-    return res.status(500).json({
-      error: 'GEMINI_API_KEY is not set on the server. Add it in Render → Environment.'
-    });
+    return res.status(500).json({ error: 'GEMINI_API_KEY not set on server.' });
   }
 
-  console.log('[Analyse] Sending capture_now to camera via WebSocket...');
+  // Stop streaming for clean still capture
+  if (streaming) {
+    cameraWS.send(JSON.stringify({ type: 'stop_stream' }));
+  }
+
+  console.log('[Analyse] Sending capture_now to camera...');
 
   try {
     cameraWS.send(JSON.stringify({ type: 'capture_now' }));
@@ -208,12 +233,12 @@ app.post('/api/analyse', async (req, res) => {
       setTimeout(() => {
         if (pendingCapture) {
           pendingCapture = null;
-          reject(new Error('Camera timed out — no image received in 20s'));
+          reject(new Error('Camera timed out — no image in 20s'));
         }
       }, 20000);
     });
 
-    console.log('[Analyse] Image received — sending to Gemini vision...');
+    console.log('[Analyse] Image received — sending to Gemini...');
 
     const prompt = `You are an expert agricultural plant pathologist. Analyse this plant image carefully.
 Respond ONLY with a valid JSON object, no markdown, no extra text:
@@ -230,32 +255,18 @@ Respond ONLY with a valid JSON object, no markdown, no extra text:
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: prompt },
-            {
-              inline_data: {
-                mime_type: 'image/jpeg',
-                data: imageBase64,
-              },
-            },
-          ],
-        }],
-        generationConfig: {
-          temperature: 0.2,
-        },
+        contents: [{ parts: [
+          { text: prompt },
+          { inline_data: { mime_type: 'image/jpeg', data: imageBase64 } },
+        ]}],
+        generationConfig: { temperature: 0.2 },
       }),
     });
 
     const geminiData = await geminiRes.json();
-
-    if (!geminiRes.ok) {
-      const errMsg = geminiData?.error?.message || `Gemini request failed (${geminiRes.status})`;
-      throw new Error(errMsg);
-    }
+    if (!geminiRes.ok) throw new Error(geminiData?.error?.message || `Gemini ${geminiRes.status}`);
 
     const raw = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-
     let analysis;
     try {
       analysis = JSON.parse(raw);
@@ -263,20 +274,29 @@ Respond ONLY with a valid JSON object, no markdown, no extra text:
       const m = raw.match(/\{[\s\S]*\}/);
       analysis = m ? JSON.parse(m[0]) : {
         health_status: 'Unknown', disease_name: 'Parse error',
-        cause: raw, recommendation: '', treatment: '', confidence: 'Low'
+        cause: raw, recommendation: '', treatment: '', confidence: 'Low',
       };
     }
-    analysis.timestamp    = new Date().toISOString();
-    analysis.imageBase64  = imageBase64;
-    latestAnalysis        = analysis;
+    analysis.timestamp   = new Date().toISOString();
+    analysis.imageBase64 = imageBase64;
+    latestAnalysis       = analysis;
 
     broadcastToDashboards({ type: 'analysis_result', analysis });
+
+    // Resume stream if it was active
+    if (streaming && cameraWS && cameraWS.readyState === WebSocket.OPEN) {
+      cameraWS.send(JSON.stringify({ type: 'start_stream' }));
+    }
 
     console.log(`[Analyse] ${analysis.health_status} — ${analysis.disease_name}`);
     res.json({ ok: true, analysis });
 
   } catch (err) {
     console.error('[Analyse] Error:', err.message);
+    // Resume stream on error too
+    if (streaming && cameraWS && cameraWS.readyState === WebSocket.OPEN) {
+      cameraWS.send(JSON.stringify({ type: 'start_stream' }));
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -291,7 +311,6 @@ app.post('/api/flash', (req, res) => {
   res.json({ ok: true, flash: state });
 });
 
-// ─── CATCH ALL ────────────────────────────────────────────────────────────────
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
