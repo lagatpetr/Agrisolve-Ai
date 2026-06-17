@@ -458,8 +458,26 @@ function connectWS() {
       updateDeviceStatus(msg.status);
     }
 
+    // Image arrives the moment the camera captures it — show it immediately,
+    // before the AI analysis (which can take a few seconds longer) finishes.
+    if (msg.type === 'captured_image' && msg.imageBase64) {
+      showSnapshot(msg.imageBase64);
+      const statusEl = document.getElementById('capture-status');
+      if (statusEl) statusEl.textContent = 'Photo captured ✓ — analysing...';
+    }
+
     if (msg.type === 'analysis_result') {
+      // analysis.imageBase64 is also included as a fallback, in case this
+      // dashboard connected after the captured_image broadcast already fired.
+      if (msg.analysis && msg.analysis.imageBase64) {
+        showSnapshot(msg.analysis.imageBase64);
+      }
       renderAnalysis(msg.analysis);
+    }
+
+    if (msg.type === 'analysis_error') {
+      const resultEl = document.getElementById('result-content');
+      resultEl.innerHTML = `<div class="result-placeholder" style="color:var(--red)">Error: ${msg.error}</div>`;
     }
   };
 
@@ -610,6 +628,16 @@ function updateCharts(history) {
 
 buildCharts();
 
+// ─── SNAPSHOT DISPLAY ─────────────────────────────────────────────────────────
+// Renders a base64 JPEG string (as sent by the backend/camera) directly into
+// the snapshot box — no network fetch to the camera's local IP needed, since
+// the dashboard (on Render) and the camera (on your home WiFi) are on
+// different networks and can't reach each other directly over HTTP.
+function showSnapshot(base64Data) {
+  const snapshotArea = document.getElementById('snapshot-area');
+  snapshotArea.innerHTML = `<img src="data:image/jpeg;base64,${base64Data}" alt="Plant photo"/>`;
+}
+
 // ─── CAMERA: CAPTURE & ANALYSE ────────────────────────────────────────────────
 async function captureAndAnalyse() {
   if (analysing) return;
@@ -617,12 +645,11 @@ async function captureAndAnalyse() {
 
   const btn = document.getElementById('btn-capture');
   const statusEl = document.getElementById('capture-status');
-  const snapshotArea = document.getElementById('snapshot-area');
   const resultEl = document.getElementById('result-content');
 
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner"></div> Capturing...';
-  statusEl.textContent = 'Fetching photo from camera...';
+  statusEl.textContent = 'Sending capture command to camera...';
   resultEl.innerHTML = '<div class="result-placeholder"><div class="spinner"></div><br><br>Analysing plant...</div>';
 
   try {
@@ -635,12 +662,15 @@ async function captureAndAnalyse() {
 
     if (!res.ok) throw new Error(data.error || 'Unknown error');
 
-    // Show captured image — refetch from camera to display
-    if (cameraIP) {
-      statusEl.textContent = 'Photo captured ✓';
-      snapshotArea.innerHTML = `<img src="http://${cameraIP}/capture?t=${Date.now()}" alt="Plant photo" onerror="this.parentElement.innerHTML='<div class=\\'snapshot-placeholder\\'>📷 Image saved for analysis</div>'"/>`;
+    // The image itself is shown as soon as the 'captured_image' WS message
+    // arrives (see connectWS above). By the time we get here the AI result
+    // has also finished, so just show it. We also pass the image through
+    // here as a fallback in case the WS broadcast was somehow missed.
+    if (data.analysis && data.analysis.imageBase64) {
+      showSnapshot(data.analysis.imageBase64);
     }
 
+    statusEl.textContent = 'Analysis complete ✓';
     renderAnalysis(data.analysis);
 
   } catch (err) {
