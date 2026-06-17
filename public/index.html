@@ -26,7 +26,6 @@
     min-height: 100vh;
   }
 
-  /* ─── HEADER ─────────────────────────────────────────────────────────── */
   header {
     background: var(--surface);
     border-bottom: 1px solid var(--border);
@@ -51,7 +50,6 @@
     text-transform: uppercase;
   }
 
-  /* ─── DEVICE STATUS PILLS ────────────────────────────────────────────── */
   .device-status {
     display: flex; gap: 10px; flex-wrap: wrap;
   }
@@ -81,7 +79,6 @@
     50%      { box-shadow: 0 0 14px var(--green); }
   }
 
-  /* ─── NAV TABS ───────────────────────────────────────────────────────── */
   nav {
     display: flex;
     background: var(--surface);
@@ -101,11 +98,9 @@
   .tab.active { color: var(--green); border-bottom-color: var(--green); }
   .tab:hover:not(.active) { color: var(--text); }
 
-  /* ─── PAGES ──────────────────────────────────────────────────────────── */
   .page { display: none; padding: 28px 24px; max-width: 1100px; margin: 0 auto; }
   .page.active { display: block; }
 
-  /* ─── SENSOR CARDS ───────────────────────────────────────────────────── */
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 32px; }
   .card {
     background: var(--surface);
@@ -153,7 +148,6 @@
   .badge-moist { background: #2d3b1a; color: #86efac; }
   .badge-dry   { background: #4a1a0a; color: #fb923c; }
 
-  /* ─── MOISTURE BAR ───────────────────────────────────────────────────── */
   .moisture-bar-bg {
     background: var(--surface2);
     border-radius: 999px;
@@ -168,7 +162,6 @@
     transition: width 0.8s ease, background 0.4s;
   }
 
-  /* ─── LAST UPDATED ───────────────────────────────────────────────────── */
   .last-updated {
     font-size: 0.72rem; color: var(--muted);
     margin-bottom: 20px;
@@ -181,7 +174,6 @@
     animation: pulse-dot 1.5s infinite;
   }
 
-  /* ─── HISTORY CHART ──────────────────────────────────────────────────── */
   .section-title { font-size: 0.9rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
   .chart-wrap {
     background: var(--surface);
@@ -192,7 +184,6 @@
   }
   canvas { width: 100% !important; }
 
-  /* ─── CAMERA PAGE ────────────────────────────────────────────────────── */
   .camera-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
   @media(max-width:720px){ .camera-layout { grid-template-columns: 1fr; } }
 
@@ -204,7 +195,6 @@
   }
   .camera-panel h2 { font-size: 1rem; font-weight: 700; color: var(--green); margin-bottom: 18px; }
 
-  /* snapshot area */
   .snapshot-area {
     background: var(--surface2);
     border: 2px dashed var(--border);
@@ -214,11 +204,36 @@
     margin-bottom: 16px;
     overflow: hidden;
     transition: border-color 0.3s;
+    position: relative;
   }
   .snapshot-area img { width: 100%; border-radius: 10px; display: block; }
   .snapshot-placeholder { color: var(--muted); font-size: 0.85rem; text-align: center; padding: 20px; }
 
-  /* buttons */
+  /* Live view overlay badge */
+  .live-badge {
+    position: absolute;
+    top: 10px; left: 10px;
+    background: var(--red);
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    display: flex; align-items: center; gap: 5px;
+    z-index: 10;
+  }
+  .live-badge .blink {
+    width: 6px; height: 6px;
+    background: #fff;
+    border-radius: 50%;
+    animation: blink 1s infinite;
+  }
+  @keyframes blink {
+    0%,100% { opacity: 1; }
+    50%      { opacity: 0; }
+  }
+
   .btn {
     display: inline-flex; align-items: center; gap: 8px;
     padding: 12px 22px;
@@ -234,19 +249,18 @@
   .btn-amber  { background: var(--amber); color: #000; }
   .btn-amber:hover  { background: #fbbf24; }
   .btn-red    { background: var(--red); color: #fff; }
+  .btn-red:hover    { background: #f87171; }
   .btn-gray   { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
   .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
   .cam-controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 
-  /* flash badge */
   .flash-status {
     font-size: 0.75rem; color: var(--muted);
     margin-left: 4px;
   }
   .flash-status.on { color: var(--amber); }
 
-  /* ─── AI RESULT PANEL ────────────────────────────────────────────────── */
   .result-panel {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -277,7 +291,6 @@
 
   .divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 
-  /* ─── SPINNER ────────────────────────────────────────────────────────── */
   .spinner {
     display: inline-block;
     width: 20px; height: 20px;
@@ -288,13 +301,23 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ─── NO DATA ─────────────────────────────────────────────────────────── */
   .no-data { color: var(--muted); font-size: 1.8rem; font-weight: 800; }
+
+  /* FPS counter */
+  .fps-counter {
+    position: absolute;
+    bottom: 8px; right: 10px;
+    font-size: 0.65rem;
+    color: rgba(255,255,255,0.5);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    z-index: 10;
+    pointer-events: none;
+  }
 </style>
 </head>
 <body>
 
-<!-- ─── HEADER ──────────────────────────────────────────────────────────────── -->
 <header>
   <div class="header-left">
     <h1>🌱 AGRISOLVE</h1>
@@ -314,33 +337,25 @@
   </div>
 </header>
 
-<!-- ─── NAV ─────────────────────────────────────────────────────────────────── -->
 <nav>
   <div class="tab active" onclick="switchPage('dashboard', this)">📊 Dashboard</div>
   <div class="tab" onclick="switchPage('camera', this)">📷 AI Camera</div>
 </nav>
 
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
 <!-- DASHBOARD PAGE -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
 <div class="page active" id="page-dashboard">
-
   <div class="last-updated">
     <div class="live-dot"></div>
     <span id="last-updated-text">Waiting for data...</span>
   </div>
 
   <div class="cards">
-
-    <!-- Temperature Card -->
     <div class="card" id="card-temp">
       <div class="card-icon">🌡️</div>
       <div class="card-label">Soil Temperature</div>
       <div class="card-value" id="val-temp"><span class="no-data">--</span></div>
       <div class="card-sub" id="sub-temp">DS18B20 Sensor · GPIO 4</div>
     </div>
-
-    <!-- Soil Moisture Card -->
     <div class="card" id="card-soil">
       <div class="card-icon">💧</div>
       <div class="card-label">Soil Moisture</div>
@@ -351,10 +366,8 @@
       <div id="soil-badge"></div>
       <div class="card-sub" style="margin-top:8px">Capacitive Sensor · GPIO 34</div>
     </div>
-
   </div>
 
-  <!-- History Charts -->
   <div class="section-title">📈 Sensor History</div>
   <div class="chart-wrap">
     <canvas id="chart-temp" height="120"></canvas>
@@ -362,22 +375,22 @@
   <div class="chart-wrap">
     <canvas id="chart-soil" height="120"></canvas>
   </div>
-
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
 <!-- CAMERA PAGE -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
 <div class="page" id="page-camera">
   <div class="camera-layout">
 
-    <!-- Left: Camera Controls -->
     <div class="camera-panel">
       <h2>📷 Camera Controls</h2>
 
       <div class="cam-controls">
         <button class="btn btn-green" id="btn-capture" onclick="captureAndAnalyse()">
           📸 Capture &amp; Analyse
+        </button>
+        <button class="btn btn-blue" id="btn-liveview" onclick="toggleLiveView()"
+          style="background:#1d4ed8;color:#fff;">
+          📡 Start Live View
         </button>
         <button class="btn btn-amber" id="btn-flash-on" onclick="setFlash('on')">
           💡 Flash ON
@@ -388,17 +401,17 @@
       </div>
       <div class="flash-status" id="flash-status">Flash: OFF</div>
 
+      <!-- Snapshot / live view area -->
       <div class="snapshot-area" id="snapshot-area">
         <div class="snapshot-placeholder">
           📷 No image captured yet<br>
-          <small>Click "Capture &amp; Analyse" to take a photo</small>
+          <small>Click "Capture &amp; Analyse" or "Start Live View"</small>
         </div>
       </div>
 
       <div id="capture-status" style="font-size:0.8rem;color:var(--muted);margin-top:8px;min-height:20px;"></div>
     </div>
 
-    <!-- Right: AI Result -->
     <div class="result-panel">
       <h2>🤖 AI Plant Health Analysis</h2>
       <div id="result-content">
@@ -411,28 +424,31 @@
   </div>
 </div>
 
-<!-- ─── Chart.js ─────────────────────────────────────────────────────────────── -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 
 <script>
-// ─── CONFIG ───────────────────────────────────────────────────────────────────
-// This will be the same URL as where the dashboard is hosted
 const BACKEND = window.location.origin;
 const WS_URL  = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') +
                 window.location.host + '/ws/sensors';
 
-let cameraIP    = null;
-let flashOn     = false;
-let analysing   = false;
+let cameraIP  = null;
+let flashOn   = false;
+let analysing = false;
 
-// ─── WEBSOCKET ────────────────────────────────────────────────────────────────
+// ── Live view state ──────────────────────────────────────────────────────────
+let liveViewActive = false;
+let lastFrameTime  = 0;
+let frameCount     = 0;
+let fpsInterval    = null;
+
+// ── WebSocket ────────────────────────────────────────────────────────────────
 let ws, wsRetryTimer;
 
 function connectWS() {
   ws = new WebSocket(WS_URL);
 
   ws.onopen = () => {
-    console.log('[WS] Connected to backend');
+    console.log('[WS] Connected');
     ws.send(JSON.stringify({ type: 'dashboard_hello' }));
     clearTimeout(wsRetryTimer);
   };
@@ -441,10 +457,10 @@ function connectWS() {
     const msg = JSON.parse(e.data);
 
     if (msg.type === 'init') {
-      if (msg.sensor)   updateSensorDisplay(msg.sensor);
-      if (msg.analysis) renderAnalysis(msg.analysis);
-      if (msg.history)  updateCharts(msg.history);
-      if (msg.status)   updateDeviceStatus(msg.status);
+      if (msg.sensor)    updateSensorDisplay(msg.sensor);
+      if (msg.analysis)  renderAnalysis(msg.analysis);
+      if (msg.history)   updateCharts(msg.history);
+      if (msg.status)    updateDeviceStatus(msg.status);
       if (msg.camera_ip) cameraIP = msg.camera_ip;
     }
 
@@ -458,31 +474,45 @@ function connectWS() {
       updateDeviceStatus(msg.status);
     }
 
-    // Image arrives the moment the camera captures it — show it immediately,
-    // before the AI analysis (which can take a few seconds longer) finishes.
+    // ── Live stream frame ──────────────────────────────────────────────────
+    if (msg.type === 'stream_frame' && msg.imageBase64) {
+      if (liveViewActive) {
+        showSnapshot(msg.imageBase64, true);   // true = keep live badge
+        frameCount++;
+      }
+    }
+
+    // ── Still capture (shown immediately, before AI finishes) ─────────────
     if (msg.type === 'captured_image' && msg.imageBase64) {
-      showSnapshot(msg.imageBase64);
+      showSnapshot(msg.imageBase64, false);
       const statusEl = document.getElementById('capture-status');
       if (statusEl) statusEl.textContent = 'Photo captured ✓ — analysing...';
     }
 
     if (msg.type === 'analysis_result') {
-      // analysis.imageBase64 is also included as a fallback, in case this
-      // dashboard connected after the captured_image broadcast already fired.
       if (msg.analysis && msg.analysis.imageBase64) {
-        showSnapshot(msg.analysis.imageBase64);
+        showSnapshot(msg.analysis.imageBase64, false);
       }
       renderAnalysis(msg.analysis);
+      // Resume live view if it was active before capture
+      if (liveViewActive) {
+        ws.send(JSON.stringify({ type: 'start_stream', camera_ip: cameraIP }));
+      }
     }
 
     if (msg.type === 'analysis_error') {
-      const resultEl = document.getElementById('result-content');
-      resultEl.innerHTML = `<div class="result-placeholder" style="color:var(--red)">Error: ${msg.error}</div>`;
+      document.getElementById('result-content').innerHTML =
+        `<div class="result-placeholder" style="color:var(--red)">Error: ${msg.error}</div>`;
+      if (liveViewActive) {
+        ws.send(JSON.stringify({ type: 'start_stream', camera_ip: cameraIP }));
+      }
     }
   };
 
   ws.onclose = () => {
     console.log('[WS] Disconnected — retrying in 4s');
+    liveViewActive = false;
+    updateLiveButton();
     wsRetryTimer = setTimeout(connectWS, 4000);
   };
 
@@ -491,7 +521,65 @@ function connectWS() {
 
 connectWS();
 
-// ─── DEVICE STATUS PILLS ──────────────────────────────────────────────────────
+// ── Live view toggle ─────────────────────────────────────────────────────────
+function toggleLiveView() {
+  if (!liveViewActive) {
+    startLiveView();
+  } else {
+    stopLiveView();
+  }
+}
+
+function startLiveView() {
+  liveViewActive = true;
+  frameCount = 0;
+  updateLiveButton();
+  document.getElementById('capture-status').textContent = 'Live view started...';
+
+  // Tell the server/camera to start streaming
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'start_stream', camera_ip: cameraIP }));
+  }
+
+  // FPS counter update every second
+  fpsInterval = setInterval(() => {
+    const fpsEl = document.getElementById('fps-counter');
+    if (fpsEl) fpsEl.textContent = frameCount + ' fps';
+    frameCount = 0;
+  }, 1000);
+}
+
+function stopLiveView() {
+  liveViewActive = false;
+  updateLiveButton();
+  document.getElementById('capture-status').textContent = 'Live view stopped.';
+  clearInterval(fpsInterval);
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'stop_stream', camera_ip: cameraIP }));
+  }
+
+  // Remove live badge and fps overlay
+  const badge = document.getElementById('live-badge');
+  const fps   = document.getElementById('fps-counter');
+  if (badge) badge.remove();
+  if (fps)   fps.remove();
+}
+
+function updateLiveButton() {
+  const btn = document.getElementById('btn-liveview');
+  if (liveViewActive) {
+    btn.textContent = '⏹ Stop Live View';
+    btn.style.background = '#7f1d1d';
+    btn.style.color = '#fca5a5';
+  } else {
+    btn.textContent = '📡 Start Live View';
+    btn.style.background = '#1d4ed8';
+    btn.style.color = '#fff';
+  }
+}
+
+// ── Device status ─────────────────────────────────────────────────────────────
 function updateDeviceStatus(status) {
   setDevicePill('dot-main', 'label-main', status.main_esp?.online);
   setDevicePill('dot-cam',  'label-cam',  status.camera_esp?.online);
@@ -511,50 +599,42 @@ function setDevicePill(dotId, labelId, online) {
   }
 }
 
-// ─── SENSOR DISPLAY ───────────────────────────────────────────────────────────
+// ── Sensor display ────────────────────────────────────────────────────────────
 function updateSensorDisplay(s) {
   if (!s || s.temperature === null) return;
 
-  // Timestamp
-  const t = new Date(s.timestamp);
   document.getElementById('last-updated-text').textContent =
-    'Last updated: ' + t.toLocaleTimeString();
+    'Last updated: ' + new Date(s.timestamp).toLocaleTimeString();
 
-  // Temperature
-  const tempEl = document.getElementById('val-temp');
-  tempEl.innerHTML = s.temperature.toFixed(1) + '<span class="card-unit"> °C</span>';
+  document.getElementById('val-temp').innerHTML =
+    s.temperature.toFixed(1) + '<span class="card-unit"> °C</span>';
   flashCard('card-temp');
 
-  // Soil moisture
-  const soilEl = document.getElementById('val-soil');
-  soilEl.innerHTML = s.soil_moisture + '<span class="card-unit"> %</span>';
+  document.getElementById('val-soil').innerHTML =
+    s.soil_moisture + '<span class="card-unit"> %</span>';
   flashCard('card-soil');
 
-  // Moisture bar
   const bar = document.getElementById('soil-bar');
   bar.style.width = s.soil_moisture + '%';
-  if (s.soil_status === 'WET') {
-    bar.style.background = 'var(--blue)';
-  } else if (s.soil_status === 'MOIST') {
-    bar.style.background = 'var(--green)';
-  } else {
-    bar.style.background = 'var(--amber)';
-  }
+  bar.style.background = s.soil_status === 'WET' ? 'var(--blue)'
+                       : s.soil_status === 'MOIST' ? 'var(--green)'
+                       : 'var(--amber)';
 
-  // Badge
-  const badgeEl = document.getElementById('soil-badge');
-  const cls = s.soil_status === 'WET' ? 'badge-wet' : s.soil_status === 'MOIST' ? 'badge-moist' : 'badge-dry';
-  badgeEl.innerHTML = `<span class="status-badge ${cls}">${s.soil_status}</span>`;
+  const cls = s.soil_status === 'WET'   ? 'badge-wet'
+            : s.soil_status === 'MOIST' ? 'badge-moist'
+            : 'badge-dry';
+  document.getElementById('soil-badge').innerHTML =
+    `<span class="status-badge ${cls}">${s.soil_status}</span>`;
 }
 
 function flashCard(id) {
   const card = document.getElementById(id);
   card.classList.remove('updated');
-  void card.offsetWidth; // reflow
+  void card.offsetWidth;
   card.classList.add('updated');
 }
 
-// ─── CHARTS ───────────────────────────────────────────────────────────────────
+// ── Charts ────────────────────────────────────────────────────────────────────
 const MAX_POINTS = 30;
 let tempChart, soilChart;
 let tempData = [], soilData = [], labels = [];
@@ -574,13 +654,9 @@ function buildCharts() {
     type: 'line',
     data: {
       labels,
-      datasets: [{
-        label: 'Soil Temperature (°C)',
-        data: tempData,
-        borderColor: '#22c55e',
-        backgroundColor: 'rgba(34,197,94,0.08)',
-        tension: 0.4, fill: true, pointRadius: 3,
-      }],
+      datasets: [{ label: 'Soil Temperature (°C)', data: tempData,
+        borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)',
+        tension: 0.4, fill: true, pointRadius: 3 }],
     },
     options: { ...shared },
   });
@@ -589,13 +665,9 @@ function buildCharts() {
     type: 'line',
     data: {
       labels,
-      datasets: [{
-        label: 'Soil Moisture (%)',
-        data: soilData,
-        borderColor: '#3b82f6',
-        backgroundColor: 'rgba(59,130,246,0.08)',
-        tension: 0.4, fill: true, pointRadius: 3,
-      }],
+      datasets: [{ label: 'Soil Moisture (%)', data: soilData,
+        borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)',
+        tension: 0.4, fill: true, pointRadius: 3 }],
     },
     options: { ...shared, scales: { ...shared.scales, y: { ...shared.scales.y, min: 0, max: 100 } } },
   });
@@ -603,18 +675,13 @@ function buildCharts() {
 
 function addToCharts(s) {
   const label = new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  labels.push(label);
-  tempData.push(s.temperature);
-  soilData.push(s.soil_moisture);
-  if (labels.length > MAX_POINTS) {
-    labels.shift(); tempData.shift(); soilData.shift();
-  }
+  labels.push(label); tempData.push(s.temperature); soilData.push(s.soil_moisture);
+  if (labels.length > MAX_POINTS) { labels.shift(); tempData.shift(); soilData.shift(); }
   tempChart.update('none');
   soilChart.update('none');
 }
 
 function updateCharts(history) {
-  // history is newest-first — reverse to get oldest-first for chart
   const reversed = [...history].reverse();
   labels.length = 0; tempData.length = 0; soilData.length = 0;
   reversed.forEach(s => {
@@ -628,24 +695,61 @@ function updateCharts(history) {
 
 buildCharts();
 
-// ─── SNAPSHOT DISPLAY ─────────────────────────────────────────────────────────
-// Renders a base64 JPEG string (as sent by the backend/camera) directly into
-// the snapshot box — no network fetch to the camera's local IP needed, since
-// the dashboard (on Render) and the camera (on your home WiFi) are on
-// different networks and can't reach each other directly over HTTP.
-function showSnapshot(base64Data) {
-  const snapshotArea = document.getElementById('snapshot-area');
-  snapshotArea.innerHTML = `<img src="data:image/jpeg;base64,${base64Data}" alt="Plant photo"/>`;
+// ── Snapshot display ──────────────────────────────────────────────────────────
+function showSnapshot(base64Data, isLive) {
+  const area = document.getElementById('snapshot-area');
+
+  // Reuse existing <img> if possible (avoids DOM churn during streaming)
+  let img = area.querySelector('img');
+  if (!img) {
+    area.innerHTML = '';
+    img = document.createElement('img');
+    img.alt = isLive ? 'Live view' : 'Plant photo';
+    img.style.width = '100%';
+    img.style.borderRadius = '10px';
+    img.style.display = 'block';
+    area.appendChild(img);
+  }
+  img.src = 'data:image/jpeg;base64,' + base64Data;
+
+  // Live badge
+  let badge = document.getElementById('live-badge');
+  if (isLive && !badge) {
+    badge = document.createElement('div');
+    badge.id = 'live-badge';
+    badge.className = 'live-badge';
+    badge.innerHTML = '<div class="blink"></div> LIVE';
+    area.appendChild(badge);
+  } else if (!isLive && badge) {
+    badge.remove();
+  }
+
+  // FPS counter (live only)
+  let fpsEl = document.getElementById('fps-counter');
+  if (isLive && !fpsEl) {
+    fpsEl = document.createElement('div');
+    fpsEl.id = 'fps-counter';
+    fpsEl.className = 'fps-counter';
+    fpsEl.textContent = '-- fps';
+    area.appendChild(fpsEl);
+  } else if (!isLive && fpsEl) {
+    fpsEl.remove();
+  }
 }
 
-// ─── CAMERA: CAPTURE & ANALYSE ────────────────────────────────────────────────
+// ── Capture & analyse ─────────────────────────────────────────────────────────
 async function captureAndAnalyse() {
   if (analysing) return;
   analysing = true;
 
-  const btn = document.getElementById('btn-capture');
+  const btn      = document.getElementById('btn-capture');
   const statusEl = document.getElementById('capture-status');
   const resultEl = document.getElementById('result-content');
+
+  // Pause live view for clean capture (camera will auto-resume after analysis_result)
+  if (liveViewActive && ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'stop_stream', camera_ip: cameraIP }));
+  }
 
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner"></div> Capturing...';
@@ -653,29 +757,27 @@ async function captureAndAnalyse() {
   resultEl.innerHTML = '<div class="result-placeholder"><div class="spinner"></div><br><br>Analysing plant...</div>';
 
   try {
-    const res = await fetch(BACKEND + '/api/analyse', {
+    const res  = await fetch(BACKEND + '/api/analyse', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ camera_ip: cameraIP }),
     });
     const data = await res.json();
-
     if (!res.ok) throw new Error(data.error || 'Unknown error');
 
-    // The image itself is shown as soon as the 'captured_image' WS message
-    // arrives (see connectWS above). By the time we get here the AI result
-    // has also finished, so just show it. We also pass the image through
-    // here as a fallback in case the WS broadcast was somehow missed.
     if (data.analysis && data.analysis.imageBase64) {
-      showSnapshot(data.analysis.imageBase64);
+      showSnapshot(data.analysis.imageBase64, false);
     }
-
     statusEl.textContent = 'Analysis complete ✓';
     renderAnalysis(data.analysis);
 
   } catch (err) {
     statusEl.textContent = '❌ Error: ' + err.message;
     resultEl.innerHTML = `<div class="result-placeholder" style="color:var(--red)">Error: ${err.message}</div>`;
+    // Resume live view even on error
+    if (liveViewActive && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'start_stream', camera_ip: cameraIP }));
+    }
   }
 
   btn.disabled = false;
@@ -683,7 +785,7 @@ async function captureAndAnalyse() {
   analysing = false;
 }
 
-// ─── RENDER AI RESULT ─────────────────────────────────────────────────────────
+// ── Render AI result ──────────────────────────────────────────────────────────
 function renderAnalysis(a) {
   if (!a) return;
   const healthClass = {
@@ -732,17 +834,16 @@ function renderAnalysis(a) {
   `;
 }
 
-// ─── FLASH CONTROL ────────────────────────────────────────────────────────────
+// ── Flash control ─────────────────────────────────────────────────────────────
 async function setFlash(state) {
   const statusEl = document.getElementById('flash-status');
   statusEl.textContent = 'Sending...';
   try {
-    const res  = await fetch(BACKEND + '/api/flash', {
+    await fetch(BACKEND + '/api/flash', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ state, camera_ip: cameraIP }),
     });
-    const data = await res.json();
     flashOn = state === 'on';
     statusEl.className = 'flash-status' + (flashOn ? ' on' : '');
     statusEl.textContent = 'Flash: ' + (flashOn ? 'ON 💡' : 'OFF 🌑');
@@ -751,8 +852,11 @@ async function setFlash(state) {
   }
 }
 
-// ─── PAGE SWITCH ──────────────────────────────────────────────────────────────
+// ── Page switch ───────────────────────────────────────────────────────────────
 function switchPage(id, tabEl) {
+  // Stop live view when leaving camera page
+  if (id !== 'camera' && liveViewActive) stopLiveView();
+
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
