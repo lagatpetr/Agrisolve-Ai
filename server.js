@@ -10,7 +10,8 @@ const server = http.createServer(app);
 const wss    = new WebSocketServer({ server, path: '/ws/sensors' });
 const PORT   = process.env.PORT || 3000;
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL   = 'gemini-1.5-flash-latest';
 
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
@@ -182,8 +183,8 @@ app.post('/api/analyse', async (req, res) => {
   if (!cameraWS || cameraWS.readyState !== WebSocket.OPEN)
     return res.status(400).json({ error: 'Camera ESP32 not connected.' });
 
-  if (!ANTHROPIC_API_KEY)
-    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set in environment variables' });
+  if (!GEMINI_API_KEY)
+    return res.status(500).json({ error: 'GEMINI_API_KEY not set in environment variables' });
 
   if (streaming) cameraWS.send(JSON.stringify({ type: 'stop_stream' }));
 
@@ -202,32 +203,18 @@ app.post('/api/analyse', async (req, res) => {
       }, 20000);
     });
 
-    console.log('[Analyse] Image received — sending to Claude AI...');
+    console.log('[Analyse] Image received — sending to Gemini AI...');
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type':      'application/json',
-        'x-api-key':         ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model:      'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type:   'image',
-              source: {
-                type:       'base64',
-                media_type: 'image/jpeg',
-                data:       imageBase64,
-              },
-            },
-            {
-              type: 'text',
-              text: `You are an expert agricultural plant pathologist. Analyse this plant image carefully.
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              {
+                text: `You are an expert agricultural plant pathologist. Analyse this plant image carefully.
 Respond ONLY with a valid JSON object, no markdown, no extra text:
 {
   "health_status": "Healthy | Diseased | Stressed | Unknown",
@@ -237,30 +224,37 @@ Respond ONLY with a valid JSON object, no markdown, no extra text:
   "treatment": "specific treatment steps if diseased, or No treatment needed if healthy",
   "confidence": "High | Medium | Low"
 }`,
-            },
-          ],
-        }],
-      }),
-    });
+              },
+              {
+                inline_data: {
+                  mime_type: 'image/jpeg',
+                  data: imageBase64,
+                },
+              },
+            ],
+          }],
+        }),
+      }
+    );
 
-    const claudeData = await response.json();
+    const geminiData = await response.json();
 
     if (!response.ok)
-      throw new Error(claudeData?.error?.message || `Claude API error ${response.status}`);
+      throw new Error(geminiData?.error?.message || `Gemini API error ${response.status}`);
 
-    const raw = claudeData?.content?.[0]?.text?.trim() || '';
+    const raw = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
     let analysis;
     try {
       analysis = JSON.parse(raw);
     } catch {
       const m = raw.match(/\{[\s\S]*\}/);
       analysis = m ? JSON.parse(m[0]) : {
-        health_status:  'Unknown',
-        disease_name:   'Parse error',
-        cause:          raw,
+        health_status: 'Unknown',
+        disease_name:  'Parse error',
+        cause:         raw,
         recommendation: '',
-        treatment:      '',
-        confidence:     'Low',
+        treatment:     '',
+        confidence:    'Low',
       };
     }
 
