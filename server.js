@@ -11,7 +11,7 @@ const wss    = new WebSocketServer({ server, path: '/ws/sensors' });
 const PORT   = process.env.PORT || 3000;
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL    = 'meta-llama/llama-4-maverick-17b-128e-instruct';
+const GROQ_MODEL    = 'meta-llama/llama-4-scout-17b-16e-instruct'; // ✅ FIXED
 
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
