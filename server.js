@@ -10,8 +10,8 @@ const server = http.createServer(app);
 const wss    = new WebSocketServer({ server, path: '/ws/sensors' });
 const PORT   = process.env.PORT || 3000;
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL   = 'gemini-1.5-flash-latest';
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_MODEL    = 'meta-llama/llama-4-maverick-17b-128e-instruct';
 
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
@@ -183,8 +183,8 @@ app.post('/api/analyse', async (req, res) => {
   if (!cameraWS || cameraWS.readyState !== WebSocket.OPEN)
     return res.status(400).json({ error: 'Camera ESP32 not connected.' });
 
-  if (!GEMINI_API_KEY)
-    return res.status(500).json({ error: 'GEMINI_API_KEY not set in environment variables' });
+  if (!GROQ_API_KEY)
+    return res.status(500).json({ error: 'GROQ_API_KEY not set in environment variables' });
 
   if (streaming) cameraWS.send(JSON.stringify({ type: 'stop_stream' }));
 
@@ -203,18 +203,22 @@ app.post('/api/analyse', async (req, res) => {
       }, 20000);
     });
 
-    console.log('[Analyse] Image received — sending to Gemini AI...');
+    console.log('[Analyse] Image received — sending to Groq AI...');
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              {
-                text: `You are an expert agricultural plant pathologist. Analyse this plant image carefully.
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `You are an expert agricultural plant pathologist. Analyse this plant image carefully.
 Respond ONLY with a valid JSON object, no markdown, no extra text:
 {
   "health_status": "Healthy | Diseased | Stressed | Unknown",
@@ -224,25 +228,25 @@ Respond ONLY with a valid JSON object, no markdown, no extra text:
   "treatment": "specific treatment steps if diseased, or No treatment needed if healthy",
   "confidence": "High | Medium | Low"
 }`,
-              },
-              {
-                inline_data: {
-                  mime_type: 'image/jpeg',
-                  data: imageBase64,
-                },
-              },
-            ],
-          }],
-        }),
-      }
-    );
+            },
+            {
+              type: 'image_url',
+              image_url: { url: `data:image/jpeg;base64,${imageBase64}` },
+            },
+          ],
+        }],
+        response_format: { type: 'json_object' },
+        temperature: 0.3,
+        max_completion_tokens: 1024,
+      }),
+    });
 
-    const geminiData = await response.json();
+    const groqData = await response.json();
 
     if (!response.ok)
-      throw new Error(geminiData?.error?.message || `Gemini API error ${response.status}`);
+      throw new Error(groqData?.error?.message || `Groq API error ${response.status}`);
 
-    const raw = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+    const raw = groqData?.choices?.[0]?.message?.content?.trim() || '';
     let analysis;
     try {
       analysis = JSON.parse(raw);
